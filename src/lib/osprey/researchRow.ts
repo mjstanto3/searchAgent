@@ -142,6 +142,12 @@ async function attemptResearchRow(
     throw new Error('Invalid response structure from model');
   }
 
+  // Strip <cite index="...">...</cite> tags from answer text (keep inner text)
+  parsed.answers = parsed.answers.map((a) => ({
+    ...a,
+    answer: a.answer.replace(/<cite[^>]*>(.*?)<\/cite>/gi, '$1').trim(),
+  }));
+
   return parsed;
 }
 
