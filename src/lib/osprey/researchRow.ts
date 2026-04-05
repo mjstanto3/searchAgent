@@ -32,7 +32,10 @@ function buildSystemPrompt(): string {
   return (
     'You are a research assistant performing structured web research. ' +
     'For each research target you are given, answer only the specific questions provided. ' +
-    'Be concise. Cite your sources. Do not speculate beyond what you find.'
+    'Be concise. Cite your sources. Do not speculate beyond what you find.\n\n' +
+    'IMPORTANT: Your final message MUST be a single valid JSON object and nothing else. ' +
+    'Do not include any prose, explanation, preamble, or markdown fences. ' +
+    'Output ONLY the raw JSON object.'
   );
 }
 
@@ -120,10 +123,18 @@ async function attemptResearchRow(
     throw new Error(`No text response received (attempt ${attemptIndex + 1})`);
   }
 
-  const raw = textBlock.text
+  // Extract JSON: strip markdown fences, then find the first {...} block
+  let raw = textBlock.text
     .replace(/^```(?:json)?\s*/i, '')
     .replace(/\s*```$/i, '')
     .trim();
+
+  // If Claude prepended prose, extract just the JSON object
+  const jsonStart = raw.indexOf('{');
+  const jsonEnd = raw.lastIndexOf('}');
+  if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+    raw = raw.slice(jsonStart, jsonEnd + 1);
+  }
 
   const parsed = JSON.parse(raw) as ResearchRowResult;
 
