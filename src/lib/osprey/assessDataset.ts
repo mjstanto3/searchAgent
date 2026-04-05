@@ -15,7 +15,7 @@ export async function assessDataset(
   const summaryText = buildDataSummaryText(parsed);
 
   const response = await client.messages.create({
-    model: 'claude-haiku-4-5',
+    model: 'claude-sonnet-4-5',
     max_tokens: 1024,
     system:
       'You are a research planning assistant. You help users understand their data and plan AI-powered research tasks.',
