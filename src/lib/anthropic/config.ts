@@ -34,25 +34,25 @@ export const TEMPERATURES = {
    * Magpie quality evaluator (Phase 3).
    * Low — needs consistent, structured JSON scoring.
    */
-  MAGPIE_EVALUATOR: 0.2,
+  MAGPIE_EVALUATOR: 0.1,
 
   /**
    * Agent role generation.
    * Moderate — benefits from slight variation to produce distinct personas.
    */
-  MAGPIE_AGENT_ROLE: 0.4,
+  MAGPIE_AGENT_ROLE: 0.2,
 
   /**
    * Run suggestions.
    * Moderate-high — creative keyword/source ideation.
    */
-  MAGPIE_SUGGESTIONS: 0.6,
+  MAGPIE_SUGGESTIONS: 0.3,
 
   /**
    * Osprey dataset assessment / clarifying questions.
    * Moderate — generative but grounded in the data.
    */
-  OSPREY_ASSESS: 0.5,
+  OSPREY_ASSESS: 0.1,
 
   // web_search calls (temperature ignored by API — documented for reference):
   // MAGPIE_SEARCH: n/a
