@@ -1,4 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
+import { MODELS, TEMPERATURES } from '@/lib/anthropic/config';
 
 /**
  * Generates a 2-sentence expert persona for a research agent based on the monitor topic + context.
@@ -8,8 +9,9 @@ export async function generateAgentRole(topic: string): Promise<string> {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY! });
 
   const message = await anthropic.messages.create({
-    model: 'claude-haiku-4-5',
+    model: MODELS.MAGPIE_AGENT_ROLE,
     max_tokens: 200,
+    temperature: TEMPERATURES.MAGPIE_AGENT_ROLE,
     messages: [
       {
         role: 'user',

@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { sanitizeInput } from '@/lib/sanitize';
 import type { OspreyEffortTier, OspreyAnswer } from '@/types';
+import { MODELS } from '@/lib/anthropic/config';
 
 const client = new Anthropic();
 
@@ -107,7 +108,7 @@ async function attemptResearchRow(
   const maxUses = EFFORT_MAX_USES[input.effortTier] * input.researchQuestions.length;
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-5',
+    model: MODELS.OSPREY_RESEARCH,
     max_tokens: 4096,
     system: buildSystemPrompt(),
     tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: maxUses }],

@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { randomUUID } from 'crypto';
 import type { Monitor, RunSuggestion } from '@/types';
+import { MODELS, TEMPERATURES } from '@/lib/anthropic/config';
 
 interface SuggestionPayload {
   suggestions: Array<{
@@ -46,8 +47,9 @@ ${briefMarkdown.slice(0, 3000)}`;
 
   try {
     const response = await client.messages.create({
-      model: 'claude-haiku-4-5',
+      model: MODELS.MAGPIE_SUGGESTIONS,
       max_tokens: 512,
+      temperature: TEMPERATURES.MAGPIE_SUGGESTIONS,
       system:
         'You are a market research strategy advisor. You respond ONLY with valid JSON — no markdown fences, no explanation.',
       messages: [{ role: 'user', content: prompt }],

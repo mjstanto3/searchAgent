@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { ParseResult } from './parseFile';
 import { buildDataSummaryText } from './parseFile';
+import { MODELS, TEMPERATURES } from '@/lib/anthropic/config';
 
 const client = new Anthropic();
 
@@ -15,8 +16,9 @@ export async function assessDataset(
   const summaryText = buildDataSummaryText(parsed);
 
   const response = await client.messages.create({
-    model: 'claude-sonnet-4-5',
+    model: MODELS.OSPREY_ASSESS,
     max_tokens: 1024,
+    temperature: TEMPERATURES.OSPREY_ASSESS,
     system:
       'You are a research planning assistant. You help users understand their data and plan AI-powered research tasks.',
     messages: [

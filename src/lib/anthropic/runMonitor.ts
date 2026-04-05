@@ -1,6 +1,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { Monitor, FindingRatingValue } from '@/types';
 import { sanitizeInput } from '@/lib/sanitize';
+import { MODELS, TEMPERATURES } from '@/lib/anthropic/config';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -239,7 +240,7 @@ function buildLearningContext(previousRuns: PreviousRunContext[]): string {
 
 async function runSearchPhase(userPrompt: string, systemPrompt: string): Promise<string> {
   const response = await getAnthropic().messages.create({
-    model: 'claude-sonnet-4-6',
+    model: MODELS.MAGPIE_SEARCH,
     max_tokens: 4096,
     system: systemPrompt,
     tools: [{ type: 'web_search_20250305', name: 'web_search' }],
@@ -392,8 +393,9 @@ async function evaluateFindings(
 
   try {
     const res = await getAnthropic().messages.create({
-      model: 'claude-sonnet-4-6',
+      model: MODELS.MAGPIE_EVALUATOR,
       max_tokens: 1024,
+      temperature: TEMPERATURES.MAGPIE_EVALUATOR,
       system:
         'You are a research quality reviewer. You respond ONLY with valid JSON — no markdown fences, no extra text.',
       messages: [
@@ -791,8 +793,9 @@ export async function runMonitorInstrumented(
   if (phase3Candidates.length > 0) {
     try {
       const evalRes = await getAnthropic().messages.create({
-        model: 'claude-sonnet-4-6',
+        model: MODELS.MAGPIE_EVALUATOR,
         max_tokens: 1024,
+        temperature: TEMPERATURES.MAGPIE_EVALUATOR,
         system:
           'You are a research quality reviewer. You respond ONLY with valid JSON — no markdown fences, no extra text.',
         messages: [
