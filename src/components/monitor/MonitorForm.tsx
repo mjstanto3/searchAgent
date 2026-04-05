@@ -25,6 +25,14 @@ const FREQUENCY_OPTIONS: { value: MonitorFrequency; label: string; description: 
 
 const MAX_RESULTS_OPTIONS = [5, 10, 20, 30];
 
+const DATE_WINDOW_OPTIONS: { value: number; label: string; description: string }[] = [
+  { value: 7,   label: '7 days',   description: 'Last week' },
+  { value: 14,  label: '14 days',  description: 'Last 2 weeks' },
+  { value: 30,  label: '30 days',  description: 'Last month' },
+  { value: 90,  label: '90 days',  description: 'Last quarter' },
+  { value: 365, label: '1 year',   description: 'Last 12 months' },
+];
+
 interface MonitorFormProps {
   userId: string;
 }
@@ -40,10 +48,12 @@ export function MonitorForm({ userId }: MonitorFormProps) {
   const [formData, setFormData] = useState<MonitorFormData>({
     name: '',
     topic: '',
+    context: '',
     sources: [],
     keywords: [],
     frequency: 'weekly',
     max_results: 10,
+    date_window_days: 30,
   });
 
   const [sourceInput, setSourceInput] = useState('');
@@ -130,22 +140,32 @@ export function MonitorForm({ userId }: MonitorFormProps) {
 
       const nextRunAt = getNextRunDate(formData.frequency);
 
-      const { error: insertError } = await supabase.from('monitors').insert({
+      const { data: insertData, error: insertError } = await supabase.from('monitors').insert({
         user_id: userId,
         name: formData.name.trim(),
         topic: formData.topic.trim(),
+        context: formData.context.trim() || null,
         sources: formData.sources,
         keywords: formData.keywords,
         document_path: documentPath,
         document_name: documentName,
         frequency: formData.frequency,
         max_results: formData.max_results,
+        date_window_days: formData.date_window_days,
         is_active: true,
         next_run_at: nextRunAt.toISOString(),
-      });
+      }).select('id').single();
 
       if (insertError) {
         throw new Error(insertError.message);
+      }
+
+      // Fire-and-forget: generate the agent role in the background.
+      // The user is redirected immediately; role will be ready before the first run.
+      if (insertData?.id) {
+        fetch(`/api/monitors/${insertData.id}/regenerate-role`, { method: 'POST' }).catch(() => {
+          // non-fatal — runs will fall back to the default role
+        });
       }
 
       router.push('/dashboard');
@@ -219,8 +239,20 @@ export function MonitorForm({ userId }: MonitorFormProps) {
               onChange={(e) =>
                 setFormData((p) => ({ ...p, topic: e.target.value }))
               }
-              rows={4}
-              hint="Be specific. The AI will search the web based on this question."
+              rows={3}
+              maxLength={500}
+              hint="A concise, focused question or topic. This drives the AI agent persona and search strategy."
+            />
+            <Textarea
+              label="Additional context (optional)"
+              placeholder="Include background info, constraints, prior knowledge, specific competitors, geographic focus, time ranges, or anything else that helps narrow the search..."
+              value={formData.context}
+              onChange={(e) =>
+                setFormData((p) => ({ ...p, context: e.target.value }))
+              }
+              rows={6}
+              maxLength={5000}
+              hint="Up to 5,000 characters. This context is injected directly into every search prompt."
             />
           </div>
         )}
@@ -401,6 +433,33 @@ export function MonitorForm({ userId }: MonitorFormProps) {
               </div>
             </div>
 
+            <div>
+              <p className="mb-3 text-sm font-medium text-slate-700">
+                Search date window
+              </p>
+              <p className="mb-3 text-xs text-slate-500">
+                How far back should each run look? This is a rolling window from the date of each run.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {DATE_WINDOW_OPTIONS.map((opt) => (
+                  <button
+                    key={opt.value}
+                    onClick={() =>
+                      setFormData((p) => ({ ...p, date_window_days: opt.value }))
+                    }
+                    className={`rounded-xl border px-4 py-2.5 text-left transition-colors ${
+                      formData.date_window_days === opt.value
+                        ? 'border-indigo-600 bg-indigo-50 text-indigo-700'
+                        : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300'
+                    }`}
+                  >
+                    <p className="text-sm font-semibold">{opt.label}</p>
+                    <p className="text-xs text-slate-500">{opt.description}</p>
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-600">
               <p className="font-medium text-slate-800">Summary</p>
               <ul className="mt-2 space-y-1">
@@ -408,6 +467,7 @@ export function MonitorForm({ userId }: MonitorFormProps) {
                 <li>Topic: <em>{formData.topic}</em></li>
                 <li>Frequency: <strong>{formData.frequency}</strong></li>
                 <li>Max results: <strong>{formData.max_results}</strong></li>
+                <li>Date window: <strong>Last {formData.date_window_days} days</strong></li>
                 {formData.sources.length > 0 && (
                   <li>Sources: {formData.sources.join(', ')}</li>
                 )}

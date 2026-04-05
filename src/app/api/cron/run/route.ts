@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { runMonitor } from '@/lib/anthropic/runMonitor';
+import { runMonitor, type PreviousRunContext } from '@/lib/anthropic/runMonitor';
+import { generateSuggestions } from '@/lib/anthropic/generateSuggestions';
 import { sendBriefEmail } from '@/lib/resend/sendBrief';
 import { calculateRunCost } from '@/lib/stripe/client';
 import { getNextRunDate } from '@/lib/utils';
@@ -42,6 +43,7 @@ export async function GET(request: NextRequest) {
   const results = { processed: 0, failed: 0, skipped: 0 };
 
   for (const monitor of monitors as Monitor[]) {
+    let run: { id: string; monitor_id: string; user_id: string; email_sent: boolean; created_at: string; status: string } | null = null;
     try {
       // Fetch user info for email
       const { data: userRow } = await supabase
@@ -66,7 +68,7 @@ export async function GET(request: NextRequest) {
       }
 
       // Create run record
-      const { data: run, error: runErr } = await supabase
+      const { data: runData, error: runErr } = await supabase
         .from('runs')
         .insert({
           monitor_id: monitor.id,
@@ -76,10 +78,11 @@ export async function GET(request: NextRequest) {
         .select()
         .single();
 
-      if (runErr || !run) {
+      if (runErr || !runData) {
         results.failed++;
         continue;
       }
+      run = runData;
 
       // Load document context if any
       let documentContext: string | undefined;
@@ -92,27 +95,66 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // Fetch last 3 completed runs with feedback for learning context
+      // Also fetch found_urls from runs within the date window for deduplication
+      const windowStart = new Date();
+      windowStart.setDate(windowStart.getDate() - (monitor.date_window_days ?? 30));
+
+      const { data: pastRuns } = await supabase
+        .from('runs')
+        .select('user_feedback, finding_ratings, found_urls, completed_at')
+        .eq('monitor_id', monitor.id)
+        .eq('status', 'completed')
+        .order('completed_at', { ascending: false })
+        .limit(10);
+
+      const previousRuns: PreviousRunContext[] = (pastRuns ?? []).slice(0, 3).map((r) => ({
+        feedback: r.user_feedback ?? undefined,
+        findingRatings: r.finding_ratings ?? undefined,
+      }));
+
+      // Build seenUrls from completed runs within the current window
+      const seenUrls = new Set<string>();
+      for (const r of pastRuns ?? []) {
+        if (!r.completed_at) continue;
+        if (new Date(r.completed_at) >= windowStart && Array.isArray(r.found_urls)) {
+          for (const url of r.found_urls) seenUrls.add(url);
+        }
+      }
+
       // Run the AI
-      const brief = await runMonitor(monitor, documentContext);
+      const brief = await runMonitor(monitor, documentContext, previousRuns, seenUrls);
 
       // Decrement credits
       await supabase.rpc('decrement_credits', {
         p_user_id: monitor.user_id,
-        p_amount: brief.creditsUsed,
+        p_amount: runCost,
         p_description: `Scheduled run: ${monitor.name}`,
       });
 
       // Update run
-      await supabase
+      const { error: updateErr } = await supabase
         .from('runs')
         .update({
           status: 'completed',
           brief_markdown: brief.markdown,
           brief_html: brief.html,
-          credits_used: brief.creditsUsed,
+          credits_used: runCost,
+          quality_score: brief.qualityScore > 0 ? brief.qualityScore : null,
+          retried_search: brief.retriedSearch,
+          removed_findings: brief.removedFindings,
+          found_urls: brief.foundUrls.length > 0 ? brief.foundUrls : null,
           completed_at: new Date().toISOString(),
         })
-        .eq('id', run.id);
+        .eq('id', run!.id);
+      if (updateErr) console.error(`Failed to mark run ${run!.id} completed:`, updateErr);
+
+      // Generate suggestions non-blocking
+      generateSuggestions(monitor, brief.markdown).then(async (suggestions) => {
+        if (suggestions.length > 0) {
+          await supabase.from('runs').update({ suggestions }).eq('id', run!.id);
+        }
+      }).catch((err) => console.error(`Suggestions failed for run ${run!.id}:`, err));
 
       // Update monitor
       await supabase
@@ -127,12 +169,12 @@ export async function GET(request: NextRequest) {
       if (userRow?.email) {
         try {
           await sendBriefEmail(userRow.email, monitor, {
-            ...run,
+            ...run!,
             brief_html: brief.html,
             brief_markdown: brief.markdown,
             status: 'completed',
           });
-          await supabase.from('runs').update({ email_sent: true }).eq('id', run.id);
+          await supabase.from('runs').update({ email_sent: true }).eq('id', run!.id);
         } catch (emailErr) {
           console.error(`Email failed for monitor ${monitor.id}:`, emailErr);
         }
@@ -142,6 +184,14 @@ export async function GET(request: NextRequest) {
     } catch (err) {
       console.error(`Error processing monitor ${monitor.id}:`, err);
       results.failed++;
+      // Mark the run as failed so it doesn't stay stuck at 'running'
+      if (run?.id) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        await supabase
+          .from('runs')
+          .update({ status: 'failed', error_message: message, completed_at: new Date().toISOString() })
+          .eq('id', run.id);
+      }
     }
   }
 

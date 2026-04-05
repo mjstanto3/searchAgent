@@ -1,0 +1,41 @@
+{
+  "fixtureName": "job-search-2-2026-04-04T22-18",
+  "capturedAt": "2026-04-04T22:31:42.732Z",
+  "monitor": {
+    "id": "2b7a0ee7-0da6-4692-853a-1ec54aed212d",
+    "name": "Job Search 2",
+    "topic": "I am searching for a new role and want to explore job boards to see if there is a role that fits.",
+    "max_results": 5,
+    "keywords": [
+      "having jobs from the last 7 days is the most important"
+    ],
+    "sources": [
+      "yc",
+      "indeed",
+      "builtin",
+      "wellfound"
+    ]
+  },
+  "result": {
+    "qualityScore": 0,
+    "retriedSearch": true,
+    "removedFindings": 0,
+    "verifiedCount": 0,
+    "lowConfidenceCount": 1,
+    "removedCount": 0
+  },
+  "pipeline": {
+    "phase2ParsedCount": 1,
+    "phase2ValidatedBreakdown": {
+      "verified": 0,
+      "lowConfidence": 1,
+      "removed": 0,
+      "unsourced": 1,
+      "dead": 0,
+      "unverifiable": 0,
+      "timeout": 0,
+      "ok": 0
+    },
+    "retryTriggered": true
+  }
+}

@@ -5,8 +5,9 @@ import { Navbar } from '@/components/layout/Navbar';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
+import { RunButton } from '@/components/monitor/RunButton';
 import type { Monitor, Credits } from '@/types';
-import { Plus, Calendar, Zap, Play } from 'lucide-react';
+import { Plus, Calendar, Zap } from 'lucide-react';
 
 export default async function DashboardPage() {
   const supabase = await createClient();
@@ -120,9 +121,9 @@ export default async function DashboardPage() {
                       View details
                     </Button>
                   </Link>
-                  <RunMonitorButton
+                  <RunButton
                     monitorId={monitor.id}
-                    credits={balance}
+                    disabled={balance <= 0}
                   />
                 </div>
               </Card>
@@ -152,29 +153,5 @@ export default async function DashboardPage() {
         )}
       </main>
     </div>
-  );
-}
-
-function RunMonitorButton({
-  monitorId,
-  credits,
-}: {
-  monitorId: string;
-  credits: number;
-}) {
-  return (
-    <form action={`/api/monitors/${monitorId}/run`} method="POST">
-      <Button
-        type="submit"
-        variant="ghost"
-        size="sm"
-        className="gap-1.5"
-        disabled={credits <= 0}
-        title={credits <= 0 ? 'Insufficient credits' : 'Run now'}
-      >
-        <Play className="h-3.5 w-3.5" />
-        Run
-      </Button>
-    </form>
   );
 }
