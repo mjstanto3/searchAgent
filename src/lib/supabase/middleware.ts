@@ -46,7 +46,7 @@ export async function updateSession(request: NextRequest) {
   // Redirect authenticated users away from auth pages
   if (user && pathname.startsWith('/auth')) {
     const url = request.nextUrl.clone();
-    url.pathname = '/dashboard';
+    url.pathname = '/magpie';
     return NextResponse.redirect(url);
   }
 

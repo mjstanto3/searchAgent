@@ -70,7 +70,7 @@ function buildEmailHtml(monitor: Monitor, run: Run): string {
     </div>
     <div class="footer">
       <p>You're receiving this because you set up a monitor on <strong>SearchAgent</strong>.</p>
-      <p><a href="${process.env.NEXT_PUBLIC_APP_URL}/dashboard">Manage your monitors</a></p>
+      <p><a href="${process.env.NEXT_PUBLIC_APP_URL}/magpie">Manage your monitors</a></p>
     </div>
   </div>
 </body>

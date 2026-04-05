@@ -24,7 +24,7 @@ export function Navbar({ email, credits }: NavbarProps) {
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/80 backdrop-blur">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        <Link href="/dashboard" className="flex items-center gap-2">
+        <Link href="/magpie" className="flex items-center gap-2">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600">
             <Zap className="h-4 w-4 text-white" />
           </div>
@@ -34,7 +34,7 @@ export function Navbar({ email, credits }: NavbarProps) {
         <nav className="flex items-center gap-4">
           {credits !== undefined && (
             <Link
-              href="/dashboard/credits"
+              href="/magpie/credits"
               className="flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
             >
               <Zap className="h-3.5 w-3.5" />

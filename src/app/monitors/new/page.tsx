@@ -21,7 +21,7 @@ export default async function NewMonitorPage() {
     .eq('user_id', user.id);
 
   if ((count ?? 0) >= 10) {
-    redirect('/dashboard?error=monitor_limit');
+    redirect('/magpie?error=monitor_limit');
   }
 
   const { data: credits } = await supabase

@@ -36,8 +36,8 @@ export async function POST(request: NextRequest) {
     payment_method_types: ['card'],
     line_items: [{ price: priceId, quantity: 1 }],
     mode: 'payment',
-    success_url: `${appUrl}/dashboard/credits?success=1&credits=${bundle.credits}`,
-    cancel_url: `${appUrl}/dashboard/credits?canceled=1`,
+    success_url: `${appUrl}/magpie/credits?success=1&credits=${bundle.credits}`,
+    cancel_url: `${appUrl}/magpie/credits?canceled=1`,
     customer_email: user.email,
     metadata: {
       userId: user.id,

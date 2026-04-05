@@ -168,7 +168,7 @@ export function MonitorForm({ userId }: MonitorFormProps) {
         });
       }
 
-      router.push('/dashboard');
+      router.push('/magpie');
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
