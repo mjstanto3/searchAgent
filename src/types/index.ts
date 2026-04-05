@@ -110,3 +110,56 @@ export interface CreditBundle {
   price: number; // in USD cents
   priceId: string; // Stripe price ID
 }
+
+// ─── Osprey types ────────────────────────────────────────────────────────────
+
+export type OspreyJobStatus =
+  | 'pending'
+  | 'processing'
+  | 'trial_complete'
+  | 'complete'
+  | 'failed';
+
+export type OspreyEffortTier = 'low' | 'medium' | 'large';
+export type OspreyResultStatus = 'pending' | 'complete' | 'failed';
+
+export interface OspreyAnswer {
+  question: string;
+  answer: string;
+  sources: string[];
+}
+
+export interface OspreyJob {
+  id: string;
+  user_id: string;
+  status: OspreyJobStatus;
+  original_file_url?: string;
+  original_file_name?: string;
+  enriched_file_url?: string;
+  parsed_data?: Record<string, string>[];
+  llm_assessment?: string;
+  clarifying_questions?: string[];
+  clarifying_answers?: Record<string, string>;
+  research_questions?: string[];
+  suggested_sources?: string[];
+  effort_tier: OspreyEffortTier;
+  total_rows: number;
+  rows_completed: number;
+  credits_used: number;
+  error_message?: string;
+  created_at: string;
+  completed_at?: string;
+}
+
+export interface OspreyResult {
+  id: string;
+  job_id: string;
+  user_id: string;
+  row_index: number;
+  research_target: string;
+  answers?: OspreyAnswer[];
+  status: OspreyResultStatus;
+  credits_used: number;
+  error_message?: string;
+  created_at: string;
+}

@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { Monitor, FindingRatingValue } from '@/types';
+import { sanitizeInput } from '@/lib/sanitize';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -904,15 +905,6 @@ ${numberedList}`;
 }
 
 /** Sanitizes user input to prevent prompt injection. */
-function sanitizeInput(input: string, maxLength = 500): string {
-  return input
-    .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
-    .replace(/\{\{.*?\}\}/g, '')
-    .replace(/<\/?[^>]+(>|$)/g, '')
-    .trim()
-    .slice(0, maxLength);
-}
-
 /** Simple markdown-to-HTML converter. */
 function markdownToHtml(markdown: string): string {
   return markdown
