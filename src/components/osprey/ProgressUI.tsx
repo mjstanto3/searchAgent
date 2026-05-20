@@ -1,16 +1,51 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { CheckCircle2, AlertCircle, Download, XCircle } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { CheckCircle2, AlertCircle, Download, XCircle, ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import type { OspreyJob } from '@/types';
+import type { OspreyJob, OspreyResult, OspreyAnswer } from '@/types';
 
 interface ProgressUIProps {
   job: OspreyJob;
+  initialResults?: OspreyResult[];
 }
 
-export function ProgressUI({ job: initialJob }: ProgressUIProps) {
+function AnswerCell({ answer }: { answer: OspreyAnswer }) {
+  const [expanded, setExpanded] = useState(false);
+  const isLong = answer.answer.length > 200;
+  return (
+    <div>
+      <p className={`text-sm text-slate-700 ${!expanded && isLong ? 'line-clamp-3' : ''}`}>
+        {answer.answer || <span className="italic text-slate-400">No answer found</span>}
+      </p>
+      {isLong && (
+        <button type="button" onClick={() => setExpanded((e) => !e)} className="mt-1 flex items-center gap-1 text-xs text-indigo-600 hover:underline">
+          {expanded ? <><ChevronUp className="h-3 w-3" /> Show less</> : <><ChevronDown className="h-3 w-3" /> Show more</>}
+        </button>
+      )}
+      {answer.sources.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {answer.sources.map((url, i) => {
+            try {
+              return (
+                <a key={i} href={url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-xs text-slate-400 hover:text-indigo-600 hover:underline">
+                  <ExternalLink className="h-2.5 w-2.5" />
+                  {new URL(url).hostname}
+                </a>
+              );
+            } catch { return null; }
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function ProgressUI({ job: initialJob, initialResults = [] }: ProgressUIProps) {
+  const router = useRouter();
   const [job, setJob] = useState<OspreyJob>(initialJob);
+  const [results, setResults] = useState<OspreyResult[]>(initialResults);
   const [currentTarget, setCurrentTarget] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -27,12 +62,14 @@ export function ProgressUI({ job: initialJob }: ProgressUIProps) {
       const updated: OspreyJob = data.job;
       setJob(updated);
 
+      if (data.results) setResults(data.results as OspreyResult[]);
+
       // Get the most recently completed result's target
       if (data.results && data.results.length > 0) {
         const completed = [...data.results]
           .filter((r: { status: string }) => r.status === 'complete')
           .sort((a: { row_index: number }, b: { row_index: number }) => b.row_index - a.row_index);
-        if (completed[0]) setCurrentTarget(completed[0].research_target);
+        if (completed[0]) setCurrentTarget((completed[0] as OspreyResult).research_target);
       }
 
       // Get signed download URL when complete
@@ -46,6 +83,11 @@ export function ProgressUI({ job: initialJob }: ProgressUIProps) {
 
       if (updated.status === 'complete' || updated.status === 'failed' || updated.status === 'cancelled') {
         if (intervalRef.current) clearInterval(intervalRef.current);
+      }
+
+      // Refresh server components to update the credit balance in the sidebar
+      if (updated.status === 'complete' || updated.status === 'trial_complete') {
+        router.refresh();
       }
     } catch {
       // Silent — keep polling
@@ -84,6 +126,7 @@ export function ProgressUI({ job: initialJob }: ProgressUIProps) {
       }
       setJob((prev) => ({ ...prev, status: 'cancelled' }));
       if (intervalRef.current) clearInterval(intervalRef.current);
+      router.refresh(); // update credit balance in sidebar
     } catch (err) {
       setCancelError(err instanceof Error ? err.message : 'Cancel failed. Please try again.');
       setCancelling(false);
@@ -145,27 +188,56 @@ export function ProgressUI({ job: initialJob }: ProgressUIProps) {
   }
 
   if (job.status === 'cancelled') {
+    const completedResults = results.filter((r) => r.status === 'complete');
+    const researchQuestions = (job.research_questions as string[]) ?? [];
+
     return (
-      <div className="mx-auto max-w-2xl space-y-4">
-        <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
-          <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-slate-500" />
-          <div>
-            <p className="font-semibold text-slate-800">Run cancelled</p>
-            <p className="mt-0.5 text-sm text-slate-500">
-              {job.rows_completed > 0
-                ? `${job.rows_completed} of ${job.total_rows} row${job.total_rows !== 1 ? 's' : ''} completed · ${job.credits_used} credit${job.credits_used !== 1 ? 's' : ''} used.`
-                : 'No rows were completed.'}
-            </p>
+      <div className="mx-auto max-w-4xl space-y-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4 flex-1">
+            <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-slate-500" />
+            <div>
+              <p className="font-semibold text-slate-800">Run cancelled</p>
+              <p className="mt-0.5 text-sm text-slate-500">
+                {job.rows_completed > 0
+                  ? `${job.rows_completed} of ${job.total_rows} row${job.total_rows !== 1 ? 's' : ''} completed · ${job.credits_used} credit${job.credits_used !== 1 ? 's' : ''} used.`
+                  : 'No rows were completed.'}
+              </p>
+            </div>
           </div>
+          {job.rows_completed < job.total_rows && (
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <Button onClick={restartJob} disabled={restarting}>
+                {restarting ? 'Restarting…' : `Resume — ${job.total_rows - job.rows_completed} rows remaining`}
+              </Button>
+              {restartError && (
+                <p className="text-xs text-red-600">{restartError}</p>
+              )}
+            </div>
+          )}
         </div>
-        {job.rows_completed < job.total_rows && (
-          <div className="flex flex-col items-end gap-1">
-            <Button onClick={restartJob} disabled={restarting}>
-              {restarting ? 'Restarting…' : `Resume — ${job.total_rows - job.rows_completed} rows remaining`}
-            </Button>
-            {restartError && (
-              <p className="text-xs text-red-600">{restartError}</p>
-            )}
+
+        {completedResults.length > 0 && researchQuestions.length > 0 && (
+          <div className="space-y-5">
+            <h3 className="font-semibold text-slate-800">
+              Completed results ({completedResults.length} row{completedResults.length !== 1 ? 's' : ''})
+            </h3>
+            {researchQuestions.map((question, qi) => (
+              <div key={qi} className="rounded-xl border border-slate-200 bg-white px-5 py-4">
+                <h4 className="mb-3 text-sm font-semibold text-slate-700">{question}</h4>
+                <div className="divide-y divide-slate-100">
+                  {completedResults.map((result) => {
+                    const answer = result.answers?.[qi];
+                    return (
+                      <div key={result.id} className="grid grid-cols-[180px_1fr] gap-4 py-3">
+                        <p className="truncate pr-2 text-sm font-medium text-slate-800">{result.research_target}</p>
+                        {answer ? <AnswerCell answer={answer} /> : <p className="text-sm italic text-slate-400">No data</p>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </div>

@@ -70,7 +70,7 @@ export default async function OspreyJobPage({ params }: PageProps) {
       )}
 
       {(job.status === 'processing' || job.status === 'complete' || job.status === 'failed' || job.status === 'cancelled') && (
-        <ProgressUI job={job} />
+        <ProgressUI job={job} initialResults={results} />
       )}
     </div>
   );
