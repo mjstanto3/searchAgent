@@ -126,11 +126,16 @@ export async function GET(request: NextRequest) {
       const brief = await runMonitor(monitor, documentContext, previousRuns, seenUrls);
 
       // Decrement credits
-      await supabase.rpc('decrement_credits', {
+      const { error: creditError } = await supabase.rpc('decrement_credits', {
         p_user_id: monitor.user_id,
         p_amount: runCost,
         p_description: `Scheduled run: ${monitor.name}`,
       });
+
+      if (creditError) {
+        console.error(`Credit decrement failed for monitor ${monitor.id}:`, creditError);
+        throw new Error('Credit deduction failed.');
+      }
 
       // Update run
       const { error: updateErr } = await supabase

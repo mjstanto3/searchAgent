@@ -136,6 +136,7 @@ export async function POST(request: NextRequest, { params }: Params) {
 
       if (creditError) {
         console.error('Credit decrement failed:', creditError);
+        throw new Error('Credit deduction failed. Please try again.');
       }
 
       // Update run record

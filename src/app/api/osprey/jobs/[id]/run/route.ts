@@ -158,11 +158,12 @@ async function processFullRun(jobId: string, userId: string, userEmail: string, 
         credits_used: 1,
       });
 
-      await supabase.rpc('decrement_credits', {
+      const { error: deductErr } = await supabase.rpc('decrement_credits', {
         p_user_id: userId,
         p_amount: 1,
         p_description: `Osprey row ${i + 1}: ${primaryValue}`,
       });
+      if (deductErr) console.error(`[osprey:run] credit deduction failed row ${i + 1}:`, deductErr);
 
       totalCreditsUsed += 1;
       rowsCompleted += 1;
@@ -242,11 +243,12 @@ async function processFullRun(jobId: string, userId: string, userEmail: string, 
         })
         .eq('id', failed.id);
 
-      await supabase.rpc('decrement_credits', {
+      const { error: retryDeductErr } = await supabase.rpc('decrement_credits', {
         p_user_id: userId,
         p_amount: 1,
         p_description: `Osprey retry row ${failed.row_index + 1}: ${primaryValue}`,
       });
+      if (retryDeductErr) console.error(`[osprey:run] credit deduction failed retry row ${failed.row_index + 1}:`, retryDeductErr);
 
       totalCreditsUsed += 1;
       rowsCompleted += 1;

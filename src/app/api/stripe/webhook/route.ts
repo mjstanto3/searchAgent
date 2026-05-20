@@ -43,12 +43,23 @@ export async function POST(request: NextRequest) {
 
     const supabase = getServiceClient();
 
+    // Idempotency check: session.id is unique per checkout; skip if already processed
+    const { data: existing } = await supabase
+      .from('credit_transactions')
+      .select('id')
+      .eq('stripe_payment_id', session.id)
+      .maybeSingle();
+
+    if (existing) {
+      return NextResponse.json({ received: true });
+    }
+
     // Add credits to the user's balance
     const { error: creditError } = await supabase.rpc('add_credits', {
       p_user_id: userId,
       p_amount: creditsToAdd,
       p_description: `Credit purchase via Stripe (${session.id})`,
-      p_stripe_payment_id: session.payment_intent as string,
+      p_stripe_payment_id: session.id,
     });
 
     if (creditError) {
