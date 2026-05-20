@@ -33,7 +33,7 @@ export default async function OspreyJobPage({ params }: PageProps) {
   const job = jobRaw as OspreyJob;
 
   let results: OspreyResult[] = [];
-  if (['trial_complete', 'complete', 'processing'].includes(job.status)) {
+  if (['trial_complete', 'complete', 'processing', 'cancelled'].includes(job.status)) {
     const { data } = await supabase
       .from('osprey_results')
       .select('*')
@@ -69,7 +69,7 @@ export default async function OspreyJobPage({ params }: PageProps) {
         <TrialResults job={job} results={results} />
       )}
 
-      {(job.status === 'processing' || job.status === 'complete' || job.status === 'failed') && (
+      {(job.status === 'processing' || job.status === 'complete' || job.status === 'failed' || job.status === 'cancelled') && (
         <ProgressUI job={job} />
       )}
     </div>

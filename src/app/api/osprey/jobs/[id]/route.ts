@@ -27,9 +27,10 @@ export async function GET(_req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: 'Job not found.' }, { status: 404 });
   }
 
-  // Fetch results if trial_complete or complete
+  // Fetch results if trial_complete, complete, processing, or cancelled
   let results = null;
-  if (job.status === 'trial_complete' || job.status === 'complete' || job.status === 'processing') {
+  if (job.status === 'trial_complete' || job.status === 'complete' ||
+      job.status === 'processing' || job.status === 'cancelled') {
     const { data } = await supabase
       .from('osprey_results')
       .select('*')
@@ -39,6 +40,42 @@ export async function GET(_req: NextRequest, { params }: Params) {
   }
 
   return NextResponse.json({ job, results });
+}
+
+export async function DELETE(_req: NextRequest, { params }: Params) {
+  const { id } = await params;
+  const supabase = await createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+  const { data: job } = await supabase
+    .from('osprey_jobs')
+    .select('status')
+    .eq('id', id)
+    .eq('user_id', user.id)
+    .single();
+
+  if (!job) return NextResponse.json({ error: 'Job not found.' }, { status: 404 });
+
+  if (['complete', 'failed', 'cancelled'].includes(job.status)) {
+    return NextResponse.json({ error: 'Job cannot be cancelled in its current state.' }, { status: 409 });
+  }
+
+  const { error: cancelError } = await supabase
+    .from('osprey_jobs')
+    .update({ status: 'cancelled' })
+    .eq('id', id)
+    .eq('user_id', user.id);
+
+  if (cancelError) {
+    return NextResponse.json({ error: 'Failed to cancel job.' }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true });
 }
 
 export async function PATCH(req: NextRequest, { params }: Params) {

@@ -32,17 +32,17 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
   const job = jobRaw as OspreyJob;
 
-  if (job.status !== 'trial_complete') {
+  if (job.status !== 'trial_complete' && job.status !== 'cancelled') {
     return NextResponse.json(
-      { error: 'Job must be in trial_complete status to start the full run.' },
+      { error: 'Job must be in trial_complete or cancelled status to start a run.' },
       { status: 409 },
     );
   }
 
-  // Credit check: 1 credit per remaining row
-  const trialRows = Math.min(3, job.total_rows);
-  const remainingRows = job.total_rows - trialRows;
-  const requiredCredits = remainingRows;
+  // Credit check: for a fresh run charge all non-trial rows; for a restart charge only uncompleted rows
+  const requiredCredits = job.status === 'cancelled'
+    ? Math.max(0, job.total_rows - (job.rows_completed ?? 0))
+    : job.total_rows - Math.min(3, job.total_rows);
 
   const { data: credits } = await supabase
     .from('credits')
@@ -54,7 +54,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
   if (balance < requiredCredits) {
     return NextResponse.json(
       {
-        error: `Insufficient credits. Full run requires ${requiredCredits} more credits but you have ${balance}.`,
+        error: `Insufficient credits. This run requires ${requiredCredits} credits but you have ${balance}.`,
         creditsRequired: requiredCredits,
         creditsAvailable: balance,
       },
@@ -62,19 +62,30 @@ export async function POST(_req: NextRequest, { params }: Params) {
     );
   }
 
-  // Mark processing
-  await supabase
+  // Atomic status transition: generate a unique run_id and write it together with
+  // status: 'processing'. The .in() filter means if another request already started
+  // a run (or the status changed), this update affects 0 rows and we return 409.
+  const newRunId = crypto.randomUUID();
+  const { data: updated } = await supabase
     .from('osprey_jobs')
-    .update({ status: 'processing' })
-    .eq('id', id);
+    .update({ status: 'processing', run_id: newRunId })
+    .in('status', ['trial_complete', 'cancelled'])
+    .eq('id', id)
+    .select('id');
 
-  waitUntil(processFullRun(id, user.id, user.email ?? ''));
+  if (!updated || updated.length === 0) {
+    return NextResponse.json(
+      { error: 'Job is already running or is no longer in a restartable state.' },
+      { status: 409 },
+    );
+  }
+
+  waitUntil(processFullRun(id, user.id, user.email ?? '', newRunId));
 
   return NextResponse.json({ ok: true }, { status: 202 });
 }
 
-async function processFullRun(jobId: string, userId: string, userEmail: string) {
-  // Use service role to bypass RLS in background
+async function processFullRun(jobId: string, userId: string, userEmail: string, runId: string) {
   const { createClient: createServer } = await import('@/lib/supabase/server');
   const supabase = await createServer();
 
@@ -95,7 +106,7 @@ async function processFullRun(jobId: string, userId: string, userEmail: string) 
   const researchQuestions = (job.research_questions as string[]) ?? [];
   const suggestedSources = (job.suggested_sources as string[]) ?? [];
 
-  // Fetch existing trial results (rows 0-2)
+  // Fetch already-completed rows (trial rows + any rows from a prior partial run)
   const { data: existingResults } = await supabase
     .from('osprey_results')
     .select('row_index')
@@ -109,6 +120,15 @@ async function processFullRun(jobId: string, userId: string, userEmail: string) 
   // Process remaining rows (skip already completed)
   for (let i = 0; i < parsedData.length; i++) {
     if (completedIndices.has(i)) continue;
+
+    // Cancel/zombie check before each row
+    const { data: check } = await supabase
+      .from('osprey_jobs')
+      .select('status, run_id')
+      .eq('id', jobId)
+      .single();
+    if (check?.status === 'cancelled') return;
+    if (check?.run_id !== runId) return; // a newer run has started — exit as zombie
 
     const row = parsedData[i];
     const primaryValue = row[primaryColumn] ?? '';
@@ -166,6 +186,15 @@ async function processFullRun(jobId: string, userId: string, userEmail: string) 
       .eq('id', jobId);
   }
 
+  // Cancel/zombie check before cleanup pass
+  const { data: cancelCheck } = await supabase
+    .from('osprey_jobs')
+    .select('status, run_id')
+    .eq('id', jobId)
+    .single();
+  if (cancelCheck?.status === 'cancelled') return;
+  if (cancelCheck?.run_id !== runId) return;
+
   // Cleanup pass: retry all failed rows one more time
   const { data: failedRows } = await supabase
     .from('osprey_results')
@@ -174,6 +203,15 @@ async function processFullRun(jobId: string, userId: string, userEmail: string) 
     .eq('status', 'failed');
 
   for (const failed of failedRows ?? []) {
+    // Cancel/zombie check before each retry row
+    const { data: retryCheck } = await supabase
+      .from('osprey_jobs')
+      .select('status, run_id')
+      .eq('id', jobId)
+      .single();
+    if (retryCheck?.status === 'cancelled') return;
+    if (retryCheck?.run_id !== runId) return;
+
     const row = parsedData[failed.row_index];
     if (!row) continue;
 
@@ -250,7 +288,7 @@ async function processFullRun(jobId: string, userId: string, userEmail: string) 
 
     const { data: signedData } = await supabase.storage
       .from('osprey-files')
-      .createSignedUrl(enrichedPath, 7 * 24 * 60 * 60); // 7 days in seconds
+      .createSignedUrl(enrichedPath, 7 * 24 * 60 * 60);
 
     enrichedFileUrl = enrichedPath;
     downloadUrl = signedData?.signedUrl;
@@ -258,7 +296,7 @@ async function processFullRun(jobId: string, userId: string, userEmail: string) 
     console.error('Failed to generate enriched file:', err);
   }
 
-  // Mark job complete
+  // Mark job complete — guarded: only updates if still processing (not cancelled or superseded)
   await supabase
     .from('osprey_jobs')
     .update({
@@ -269,7 +307,8 @@ async function processFullRun(jobId: string, userId: string, userEmail: string) 
       completed_at: new Date().toISOString(),
       error_message: rowsCompleted === 0 ? 'No rows could be researched successfully.' : null,
     })
-    .eq('id', jobId);
+    .eq('id', jobId)
+    .eq('status', 'processing');
 
   // Send completion email
   if (downloadUrl && userEmail) {

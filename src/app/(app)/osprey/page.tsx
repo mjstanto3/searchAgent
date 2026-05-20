@@ -13,6 +13,7 @@ const STATUS_LABELS: Record<string, string> = {
   trial_complete: 'Trial done',
   complete: 'Complete',
   failed: 'Failed',
+  cancelled: 'Cancelled',
 };
 
 const STATUS_VARIANTS: Record<string, 'default' | 'success' | 'warning' | 'error'> = {
@@ -21,6 +22,7 @@ const STATUS_VARIANTS: Record<string, 'default' | 'success' | 'warning' | 'error
   trial_complete: 'warning',
   complete: 'success',
   failed: 'error',
+  cancelled: 'default',
 };
 
 export default async function OspreyPage() {

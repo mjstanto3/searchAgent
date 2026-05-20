@@ -118,7 +118,8 @@ export type OspreyJobStatus =
   | 'processing'
   | 'trial_complete'
   | 'complete'
-  | 'failed';
+  | 'failed'
+  | 'cancelled';
 
 export type OspreyEffortTier = 'low' | 'medium' | 'large';
 export type OspreyResultStatus = 'pending' | 'complete' | 'failed';
@@ -127,6 +128,9 @@ export interface OspreyAnswer {
   question: string;
   answer: string;
   sources: string[];
+  confidence?: number;        // 1–5: 5=specific sourced fact, 4=well-sourced, 3=reasonable, 2=vague, 1=not found/speculative
+  confidence_reason?: string; // one sentence explaining the score
+  answer_format?: 'brief' | 'sentence' | 'paragraph'; // how Claude classified the question and calibrated its answer
 }
 
 export interface OspreyJob {
@@ -149,6 +153,7 @@ export interface OspreyJob {
   error_message?: string;
   created_at: string;
   completed_at?: string;
+  run_id?: string;
 }
 
 export interface OspreyResult {

@@ -63,13 +63,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const t0 = Date.now();
+  const log = (msg: string) => console.log(`[osprey:create] ${msg} (+${Date.now() - t0}ms)`);
+
   // Read buffer and parse
+  log('parsing file');
   const arrayBuffer = await file.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
 
   let parsed;
   try {
     parsed = parseFileBuffer(buffer, file.name);
+    log(`parsed — ${parsed.rowCount} rows, ${parsed.headers.length} columns`);
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : 'Failed to parse file.';
     return NextResponse.json({ error: msg }, { status: 400 });
@@ -87,6 +92,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Upload original file to Supabase storage
+  log('uploading file to storage');
   const storagePath = `${user.id}/${Date.now()}-${file.name}`;
   const { error: uploadError } = await supabase.storage
     .from('osprey-files')
@@ -102,22 +108,26 @@ export async function POST(req: NextRequest) {
       { status: 500 },
     );
   }
+  log('storage upload done');
 
   const { data: urlData } = supabase.storage
     .from('osprey-files')
     .getPublicUrl(storagePath);
 
   // Call Anthropic to assess dataset
+  log('assessDataset start');
   let assessment;
   try {
     assessment = await assessDataset(parsed);
+    log(`assessDataset done — summary: ${assessment.summary.length} chars, ${assessment.clarifyingQuestions.length} questions`);
   } catch (err) {
     console.error('Dataset assessment failed:', err);
-    // Non-fatal — continue with empty assessment
+    log('assessDataset failed — continuing with empty assessment');
     assessment = { summary: '', clarifyingQuestions: [] };
   }
 
   // Create job record
+  log('inserting job record');
   const { data: job, error: jobError } = await supabase
     .from('osprey_jobs')
     .insert({
@@ -142,5 +152,6 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  log(`done — job ${job.id}`);
   return NextResponse.json({ jobId: job.id }, { status: 201 });
 }

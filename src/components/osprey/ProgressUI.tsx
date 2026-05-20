@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState, useRef } from 'react';
-import { CheckCircle2, AlertCircle, Download } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Download, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import type { OspreyJob } from '@/types';
 
@@ -13,6 +13,10 @@ export function ProgressUI({ job: initialJob }: ProgressUIProps) {
   const [job, setJob] = useState<OspreyJob>(initialJob);
   const [currentTarget, setCurrentTarget] = useState<string | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+  const [restarting, setRestarting] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   async function pollJob() {
@@ -40,11 +44,49 @@ export function ProgressUI({ job: initialJob }: ProgressUIProps) {
         }
       }
 
-      if (updated.status === 'complete' || updated.status === 'failed') {
+      if (updated.status === 'complete' || updated.status === 'failed' || updated.status === 'cancelled') {
         if (intervalRef.current) clearInterval(intervalRef.current);
       }
     } catch {
       // Silent — keep polling
+    }
+  }
+
+  async function restartJob() {
+    setRestarting(true);
+    setRestartError(null);
+    try {
+      const res = await fetch(`/api/osprey/jobs/${job.id}/run`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Restart failed');
+      }
+      setJob((prev) => ({ ...prev, status: 'processing' }));
+      // Clear any stale interval before starting a fresh one
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      intervalRef.current = setInterval(pollJob, 5000);
+      pollJob();
+      // restarting stays true — once status flips to processing, this branch no longer renders
+    } catch (err) {
+      setRestartError(err instanceof Error ? err.message : 'Restart failed. Please try again.');
+      setRestarting(false);
+    }
+  }
+
+  async function cancelJob() {
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      const res = await fetch(`/api/osprey/jobs/${job.id}`, { method: 'DELETE' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error((body as { error?: string }).error ?? 'Cancel failed');
+      }
+      setJob((prev) => ({ ...prev, status: 'cancelled' }));
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : 'Cancel failed. Please try again.');
+      setCancelling(false);
     }
   }
 
@@ -99,6 +141,34 @@ export function ProgressUI({ job: initialJob }: ProgressUIProps) {
     );
   }
 
+  if (job.status === 'cancelled') {
+    return (
+      <div className="mx-auto max-w-2xl space-y-4">
+        <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 px-5 py-4">
+          <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-slate-500" />
+          <div>
+            <p className="font-semibold text-slate-800">Run cancelled</p>
+            <p className="mt-0.5 text-sm text-slate-500">
+              {job.rows_completed > 0
+                ? `${job.rows_completed} of ${job.total_rows} row${job.total_rows !== 1 ? 's' : ''} completed · ${job.credits_used} credit${job.credits_used !== 1 ? 's' : ''} used.`
+                : 'No rows were completed.'}
+            </p>
+          </div>
+        </div>
+        {job.rows_completed < job.total_rows && (
+          <div className="flex flex-col items-end gap-1">
+            <Button onClick={restartJob} disabled={restarting}>
+              {restarting ? 'Restarting…' : `Resume — ${job.total_rows - job.rows_completed} rows remaining`}
+            </Button>
+            {restartError && (
+              <p className="text-xs text-red-600">{restartError}</p>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   if (job.status === 'failed') {
     return (
       <div className="mx-auto max-w-2xl">
@@ -125,7 +195,7 @@ export function ProgressUI({ job: initialJob }: ProgressUIProps) {
         <h2 className="text-xl font-semibold text-slate-900">Running research…</h2>
         <p className="mt-1 text-sm text-slate-500">
           You can leave this page — your research will continue in the background.
-          We'll send you an email when it's done.
+          We&apos;ll send you an email when it&apos;s done.
         </p>
       </div>
 
@@ -150,9 +220,26 @@ export function ProgressUI({ job: initialJob }: ProgressUIProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-2 text-sm text-slate-500">
-        <div className="h-2 w-2 animate-pulse rounded-full bg-indigo-500" />
-        Researching…
+      <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2 text-sm text-slate-500">
+            <div className="h-2 w-2 animate-pulse rounded-full bg-indigo-500" />
+            Researching…
+          </div>
+          {cancelError && (
+            <p className="text-xs text-red-600">{cancelError}</p>
+          )}
+        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={cancelJob}
+          disabled={cancelling}
+          className="text-slate-500 hover:text-red-600"
+        >
+          <XCircle className="mr-1.5 h-4 w-4" />
+          {cancelling ? 'Cancelling…' : 'Cancel run'}
+        </Button>
       </div>
     </div>
   );

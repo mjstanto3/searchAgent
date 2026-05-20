@@ -90,6 +90,10 @@ export async function POST(_req: NextRequest, { params }: Params) {
   let totalCreditsUsed = 0;
   let rowsCompleted = 0;
 
+  const t0 = Date.now();
+  const log = (msg: string) => console.log(`[osprey:trial:${id.slice(0, 8)}] ${msg} (+${Date.now() - t0}ms)`);
+  log(`starting — ${Math.min(TRIAL_ROWS, parsedData.length)} rows, effort: ${effortTier}, questions: ${researchQuestions.length}`);
+
   // Process first TRIAL_ROWS rows sequentially
   for (let i = 0; i < Math.min(TRIAL_ROWS, parsedData.length); i++) {
     const row = parsedData[i];
@@ -98,6 +102,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
     for (const [col, val] of Object.entries(row)) {
       if (col !== primaryColumn) contextColumns[col] = val;
     }
+
+    log(`row ${i + 1} start — "${primaryValue}"`);
+    const rowStart = Date.now();
 
     const { result, error } = await researchRow({
       primaryColumn,
@@ -108,6 +115,8 @@ export async function POST(_req: NextRequest, { params }: Params) {
       suggestedSources,
       effortTier,
     });
+
+    log(`row ${i + 1} researchRow done — ${Date.now() - rowStart}ms — ${result ? `ok, quality: ${result.overall_quality}` : `failed: ${error}`}`);
 
     if (result) {
       await supabase.from('osprey_results').insert({
@@ -129,6 +138,7 @@ export async function POST(_req: NextRequest, { params }: Params) {
 
       totalCreditsUsed += 1;
       rowsCompleted += 1;
+      log(`row ${i + 1} saved — ${rowsCompleted} completed so far`);
     } else {
       await supabase.from('osprey_results').insert({
         job_id: id,
@@ -140,10 +150,13 @@ export async function POST(_req: NextRequest, { params }: Params) {
         credits_used: 0,
         error_message: error ?? 'Research failed',
       });
+      log(`row ${i + 1} saved as failed`);
     }
   }
 
-  // Update job status
+  log(`all rows done — ${rowsCompleted}/${Math.min(TRIAL_ROWS, parsedData.length)} succeeded`);
+
+  // Update job status — guard against overwriting a cancellation that arrived mid-trial
   await supabase
     .from('osprey_jobs')
     .update({
@@ -151,7 +164,9 @@ export async function POST(_req: NextRequest, { params }: Params) {
       rows_completed: rowsCompleted,
       credits_used: totalCreditsUsed,
     })
-    .eq('id', id);
+    .eq('id', id)
+    .eq('status', 'processing');
+  log('status updated to trial_complete');
 
   return NextResponse.json({ ok: true, rowsCompleted, creditsUsed: totalCreditsUsed });
 }
