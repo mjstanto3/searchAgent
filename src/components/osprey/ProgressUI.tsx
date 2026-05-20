@@ -101,6 +101,9 @@ export function ProgressUI({ job: initialJob }: ProgressUIProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const TRIAL_ROWS = 3;
+  const isTrial = job.rows_completed < TRIAL_ROWS && job.total_rows > TRIAL_ROWS;
+
   const progress = job.total_rows > 0
     ? Math.round((job.rows_completed / job.total_rows) * 100)
     : 0;
@@ -192,39 +195,81 @@ export function ProgressUI({ job: initialJob }: ProgressUIProps) {
   return (
     <div className="mx-auto max-w-2xl space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-slate-900">Running research…</h2>
+        <h2 className="text-xl font-semibold text-slate-900">
+          {isTrial ? 'Running trial…' : 'Running research…'}
+        </h2>
         <p className="mt-1 text-sm text-slate-500">
-          You can leave this page — your research will continue in the background.
-          We&apos;ll send you an email when it&apos;s done.
+          {isTrial
+            ? 'Researching the first 3 rows so you can preview results before committing to the full run.'
+            : "You can leave this page — your research will continue in the background. We'll send you an email when it's done."}
         </p>
       </div>
 
-      {/* Progress bar */}
-      <div>
-        <div className="mb-2 flex items-center justify-between text-sm">
-          <span className="font-medium text-slate-700">
-            {job.rows_completed} / {job.total_rows}
-            {currentTarget && (
-              <span className="ml-2 font-normal text-slate-500">
-                — Current topic: <span className="font-medium">{currentTarget}</span>
-              </span>
-            )}
-          </span>
-          <span className="text-slate-500">{progress}%</span>
+      {isTrial ? (
+        /* Trial: stepped row indicator */
+        <div className="rounded-xl border border-slate-200 bg-white px-5 py-5 space-y-4">
+          <div className="flex items-center gap-0">
+            {[1, 2, 3].map((row) => {
+              const isComplete = job.rows_completed >= row;
+              const isCurrent = job.rows_completed === row - 1;
+              return (
+                <div key={row} className="flex items-center">
+                  <div className={[
+                    'flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold transition-colors',
+                    isComplete ? 'bg-green-100 text-green-700' :
+                    isCurrent  ? 'bg-indigo-100 text-indigo-700' :
+                                 'bg-slate-100 text-slate-400',
+                  ].join(' ')}>
+                    {isComplete
+                      ? <CheckCircle2 className="h-4 w-4 text-green-600" />
+                      : isCurrent
+                        ? <div className="h-2 w-2 animate-pulse rounded-full bg-indigo-500" />
+                        : row}
+                  </div>
+                  {row < TRIAL_ROWS && (
+                    <div className={[
+                      'h-0.5 w-10',
+                      isComplete ? 'bg-green-300' : 'bg-slate-200',
+                    ].join(' ')} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="text-sm text-slate-600">
+            {currentTarget
+              ? <>Last completed: <span className="font-medium">{currentTarget}</span> · Researching row {job.rows_completed + 1} of {TRIAL_ROWS}…</>
+              : <>Researching row {job.rows_completed + 1} of {TRIAL_ROWS}…</>}
+          </p>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-slate-200">
-          <div
-            className="h-full rounded-full bg-indigo-600 transition-all duration-500"
-            style={{ width: `${progress}%` }}
-          />
+      ) : (
+        /* Full run: percentage progress bar */
+        <div>
+          <div className="mb-2 flex items-center justify-between text-sm">
+            <span className="font-medium text-slate-700">
+              {job.rows_completed} / {job.total_rows}
+              {currentTarget && (
+                <span className="ml-2 font-normal text-slate-500">
+                  — Current topic: <span className="font-medium">{currentTarget}</span>
+                </span>
+              )}
+            </span>
+            <span className="text-slate-500">{progress}%</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+            <div
+              className="h-full rounded-full bg-indigo-600 transition-all duration-500"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="flex items-center justify-between">
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2 text-sm text-slate-500">
-            <div className="h-2 w-2 animate-pulse rounded-full bg-indigo-500" />
-            Researching…
+            {!isTrial && <div className="h-2 w-2 animate-pulse rounded-full bg-indigo-500" />}
+            {isTrial ? `Row ${job.rows_completed + 1} of ${TRIAL_ROWS} in progress` : 'Researching…'}
           </div>
           {cancelError && (
             <p className="text-xs text-red-600">{cancelError}</p>
