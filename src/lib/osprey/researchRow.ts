@@ -7,8 +7,8 @@ const client = new Anthropic();
 
 const EFFORT_MAX_USES: Record<OspreyEffortTier, number> = {
   low: 1,
-  medium: 3,
-  large: 5,
+  medium: 2,
+  large: 4,
 };
 
 const RETRY_DELAYS_MS = [10_000, 20_000, 40_000];
@@ -92,11 +92,12 @@ const SUBMIT_RESEARCH_TOOL = {
 
 function buildSystemPrompt(): string {
   return (
-    'You are a research assistant performing structured web research. ' +
-    'Use web_search to find information for each research question. ' +
-    'After each search, assess whether you have confident answers (score 4–5). ' +
-    'If all questions are answered with high confidence, call submit_research immediately — do not search further. ' +
-    'Only continue searching if answers are still incomplete or low-confidence (score 1–3). ' +
+    'You are a research assistant performing efficient structured web research. ' +
+    'Search strategy: start with ONE broad query that covers as many questions as possible. ' +
+    'After that first search, score your confidence on each question (1–5). ' +
+    'If all questions score 4–5, call submit_research immediately — do not search again. ' +
+    'Only do additional searches for questions that still score 1–3, and only one targeted search per gap. ' +
+    'You have a hard cap on searches — use them sparingly. ' +
     'When submitting, classify each question\'s answer_format BEFORE writing the answer, then strictly match that length: ' +
     '"brief" = 1–10 words only, "sentence" = 1–2 sentences, "paragraph" = 3–5 sentences maximum. ' +
     'Never write more than the format requires. A factual question answered with a paragraph is wrong. ' +
@@ -174,7 +175,8 @@ async function attemptResearchRow(
   } as Parameters<typeof client.messages.create>[0]) as Anthropic.Message;
 
   const apiMs = Date.now() - attemptStart;
-  const searchCount = response.content.filter((b) => b.type === 'tool_use' && (b as Anthropic.ToolUseBlock).name === 'web_search').length;
+  // Built-in server tools (web_search_20250305) use type 'server_tool_use', not 'tool_use'
+  const searchCount = response.content.filter((b) => b.type === 'server_tool_use').length;
   console.log(`[researchRow] "${input.primaryValue}" attempt ${attemptIndex + 1} — model call done ${apiMs}ms, stop_reason: ${response.stop_reason}, web_searches: ${searchCount}, blocks: ${response.content.length}`);
 
   const toolUseBlock = response.content.find(
